@@ -29,6 +29,11 @@ rustybuzz = { opt-level = 3 }
 taffy = { opt-level = 3 }
 ttf-parser = { opt-level = 3 }
 
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
+
 
 [package.metadata.deb]
 maintainer = "sandesh2007 <sandeshsharma924@gmail.com>"
