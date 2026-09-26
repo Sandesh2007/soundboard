@@ -44,3 +44,13 @@ priority = "optional"
 assets = [
     ["target/release/soundboard", "usr/bin/soundboard", "755"],
 ]
+
+[package.metadata.generate-rpm]
+maintainer = "sandesh2007 <sandeshsharma924@gmail.com>"
+copyright = "2026, Sandesh"
+# depends = "libc6, libasound2"
+section = "sound"
+priority = "optional"
+assets = [
+    { source = "target/release/soundboard", dest = "/usr/bin/soundboard", mode = "755" },
+]
