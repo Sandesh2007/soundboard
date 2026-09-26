@@ -4,6 +4,11 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
 
+/// Owns the default audio output and a pool of active playback sinks.
+///
+/// Each call to `play` starts a brand-new `Sink`, so multiple sounds can
+/// overlap (a soundboard needs to be able to fire several clips at once),
+/// unless `stop_all` is used first for exclusive playback.
 pub struct AudioEngine {
     // Must be kept alive for as long as sinks should be able to play.
     _stream: OutputStream,

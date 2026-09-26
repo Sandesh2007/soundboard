@@ -10,8 +10,8 @@ rodio = "0.19"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 dirs = "5.0"
+gpui-kit-assets = "0.6.6"
 
-# Speeds up debug builds noticeably (see gpui-kit docs: "Faster development builds").
 [profile.dev.package]
 gpui-pre = { opt-level = 3 }
 gpui-component = { opt-level = 3 }
