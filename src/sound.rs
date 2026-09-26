@@ -10,15 +10,12 @@ pub struct SoundEntry {
     pub name: String,
     pub path: PathBuf,
 
-    /// Per-sound volume, linear gain (0.0..=1.0, occasionally boosted above 1.0).
     #[serde(default = "default_volume")]
     pub volume: f32,
 
-    /// Optional keybind, e.g. "ctrl-shift-1". Formatted from GPUI's `Keystroke`.
     #[serde(default)]
     pub keybind: Option<String>,
 
-    /// Optional profile picture / icon shown on the sound's tile.
     #[serde(default)]
     pub image_path: Option<PathBuf>,
 }
@@ -27,8 +24,6 @@ fn default_volume() -> f32 {
     1.0
 }
 
-/// The user's saved set of sounds. Persisted as JSON so sounds survive
-/// restarting the app.
 #[derive(Default, Serialize, Deserialize)]
 pub struct SoundLibrary {
     pub sounds: Vec<SoundEntry>,
@@ -59,7 +54,6 @@ impl SoundLibrary {
         Ok(())
     }
 
-    /// Add a sound and return the id it was assigned.
     pub fn add(&mut self, name: String, path: PathBuf) -> u64 {
         let id = self.next_id;
         self.next_id += 1;
@@ -86,7 +80,6 @@ impl SoundLibrary {
         self.sounds.iter_mut().find(|s| s.id == id)
     }
 
-    /// Find a sound whose keybind matches the given combo string, if any.
     pub fn find_by_keybind(&self, combo: &str) -> Option<u64> {
         self.sounds
             .iter()

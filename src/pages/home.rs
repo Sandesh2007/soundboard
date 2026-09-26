@@ -1,9 +1,9 @@
 use gpui_kit::component::button::ButtonVariants;
+use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::{button::Button, h_flex, v_flex, ActiveTheme};
-use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    div, img, px, Context, InteractiveElement, IntoElement, ParentElement as _,
-    StatefulInteractiveElement, Styled as _,
+    div, img, px, Context, InteractiveElement, IntoElement, Keystroke, ObjectFit,
+    ParentElement as _, StatefulInteractiveElement, Styled as _, StyledImage,
 };
 use gpui_kit_assets::IconName;
 
@@ -16,72 +16,87 @@ impl SoundboardApp {
         sound: &SoundEntry,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let play_id = sound.id;
         let select_id = sound.id;
-        let delete_id = sound.id;
-        let has_keybind = sound.keybind.is_some();
 
-        h_flex()
+        let keybind_element = match &sound.keybind {
+            Some(kb) => match Keystroke::parse(kb) {
+                Ok(keystroke) => Kbd::new(keystroke).into_any_element(),
+                Err(_) => div()
+                    .px_0p5()
+                    .text_xs()
+                    .rounded(cx.theme().radius)
+                    .bg(cx.theme().danger)
+                    .border_color(cx.theme().border)
+                    .text_color(cx.theme().muted_foreground)
+                    .child("Invalid keybind")
+                    .into_any_element(),
+            },
+            None => div()
+                .px_0p5()
+                .text_xs()
+                .rounded_sm()
+                .bg(cx.theme().secondary)
+                .border_color(cx.theme().border)
+                .text_xs()
+                .text_color(cx.theme().muted_foreground)
+                .child("No keybind set")
+                .into_any_element(),
+        };
+
+        v_flex()
             .id(("sound-card", sound.id))
-            .w(px(220.))
-            .p_3()
+            .w(px(170.))
+            .p_2()
             .gap_2()
             .items_center()
-            .rounded(cx.theme().radius)
+            .rounded(cx.theme().radius_lg)
             .border_1()
             .border_color(cx.theme().border)
-            .bg(cx.theme().muted)
+            .cursor_pointer()
+            .relative()
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.select_sound(select_id, cx);
+                this.play_sound(select_id, cx);
+            }))
             .child(match &sound.image_path {
                 Some(path) => div()
-                    .w(px(32.))
-                    .h(px(32.))
-                    .rounded_full()
+                    .w(px(140.))
+                    .h(px(140.))
+                    .rounded(cx.theme().radius_lg)
                     .overflow_hidden()
                     .flex_shrink_0()
-                    .child(img(path.clone()).w(px(32.)).h(px(32.)))
+                    .child(
+                        img(path.clone())
+                            .w_full()
+                            .h_full()
+                            .rounded(cx.theme().radius_lg)
+                            .object_fit(ObjectFit::Fill),
+                    )
                     .into_any_element(),
                 None => div()
-                    .w(px(32.))
-                    .h(px(32.))
-                    .rounded_full()
+                    .w(px(140.))
+                    .h(px(140.))
+                    .rounded(cx.theme().radius_lg)
                     .flex_shrink_0()
                     .bg(cx.theme().border)
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(
+                        div()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(IconName::Music),
+                    )
                     .into_any_element(),
             })
             .child(
-                Button::new(("play-sound", play_id))
-                    .ghost()
-                    .icon(IconName::Play)
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.play_sound(play_id, cx);
-                    })),
-            )
-            .child(
                 div()
-                    .id(("sound-name", select_id))
-                    .flex_1()
-                    .cursor_pointer()
-                    .child(sound.name.clone())
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.select_sound(select_id, cx);
-                    })),
+                    .text_xs()
+                    .text_center()
+                    .w_full()
+                    .child(sound.name.clone()),
             )
-            .when(has_keybind, |this| {
-                this.child(
-                    div()
-                        .text_xs()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(sound.keybind.clone().unwrap_or_default()),
-                )
-            })
-            .child(
-                Button::new(("delete-sound", delete_id))
-                    .ghost()
-                    .icon(IconName::TrashOff)
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.remove_sound(delete_id, cx);
-                    })),
-            )
+            .child(keybind_element)
     }
 
     pub fn render_home(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -98,13 +113,31 @@ impl SoundboardApp {
                     .justify_between()
                     .child(div().text_lg().child("My Sounds"))
                     .child(
-                        Button::new("add-sound")
-                            .primary()
-                            .icon(IconName::Plus)
-                            .label("Add sound…")
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.add_sound(cx);
-                            })),
+                        h_flex()
+                            .gap_2()
+                            .child(
+                                Button::new("add-sound")
+                                    .primary()
+                                    .icon(IconName::Plus)
+                                    .label("Add sound…")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.add_sound(cx);
+                                    })),
+                            )
+                            .child(if self.details_page_expanded {
+                                div().invisible()
+                            } else {
+                                div()
+                                    .child(
+                                        Button::new("open-detail")
+                                            .secondary()
+                                            .icon(IconName::PanelLeft)
+                                            .on_click(cx.listener(|this, _, _, cx| {
+                                                this.select_sound(0, cx);
+                                            })),
+                                    )
+                                    .visible()
+                            }),
                     ),
             )
             .child(if has_sounds {
