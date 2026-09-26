@@ -1,7 +1,11 @@
 [package]
 name = "soundboard"
+description = "A awesome soundboard app for streamers"
 version = "0.1.0"
+license = "GPL-3.0"
 edition = "2021"
+readme = "README.md"
+repository = "https://github.com/sandesh2007/soundboard"
 
 [dependencies]
 gpui-kit = "0.6"
@@ -24,3 +28,14 @@ gpui-pre-platform = { opt-level = 3 }
 rustybuzz = { opt-level = 3 }
 taffy = { opt-level = 3 }
 ttf-parser = { opt-level = 3 }
+
+
+[package.metadata.deb]
+maintainer = "sandesh2007 <sandeshsharma924@gmail.com>"
+copyright = "2026, Sandesh"
+# depends = "libc6, libasound2"
+section = "sound"
+priority = "optional"
+assets = [
+    ["target/release/soundboard", "usr/bin/soundboard", "755"],
+]
