@@ -11,6 +11,8 @@ use gpui_kit::{
     div, Anchor, App, AppContext as _, Context, Entity, FocusHandle, InteractiveElement as _,
     IntoElement, KeyDownEvent, ParentElement as _, PathPromptOptions, Render, Styled as _, Window,
 };
+use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
 use crate::sound::SoundLibrary;
 use crate::{audio::AudioEngine, core::get_sounds::InstantSound};
@@ -38,6 +40,13 @@ pub struct SoundboardApp {
     pub is_busy: bool,
     pub keybind_conflict_warning: String,
 
+    pub playing_id: Option<String>,
+    pub playing_duration: Option<Duration>,
+    pub playback_elapsed: Duration,
+    pub playback_started_at: Option<Instant>,
+    pub is_paused: bool,
+
+    pub download_progress: Option<f32>,
     pub focus_handle: FocusHandle,
 
     // search sounds
@@ -102,6 +111,12 @@ impl SoundboardApp {
             is_busy: false,
             keybind_conflict_warning: String::new(),
             recording_keybind: false,
+            playing_id: None,
+            playing_duration: None,
+            playback_elapsed: Duration::ZERO,
+            playback_started_at: None,
+            is_paused: false,
+            download_progress: None,
             focus_handle,
             search_query: String::new(),
             search_input,
@@ -155,7 +170,6 @@ impl SoundboardApp {
     ) {
         let msg = message.into();
 
-        // grab the first window then show notification there
         if let Some(window_handle) = cx.windows().first() {
             let _ = window_handle.update(cx, |_, window, cx| {
                 window.push_notification(
@@ -210,17 +224,125 @@ impl SoundboardApp {
         .detach();
     }
 
-    pub fn play_sound(&mut self, id: String, cx: &mut Context<Self>) {
-        let Some(entry) = self.library.get(id).cloned() else {
-            return;
-        };
+    fn begin_playback(&mut self, id: String, path: PathBuf, volume: f32, cx: &mut Context<Self>) {
         if self.stop_others {
             self.audio.stop_all();
         }
-        let volume = self.master_volume_fraction(cx) * entry.volume;
-        if let Err(err) = self.audio.play(&entry.path, volume) {
-            eprintln!("soundboard: failed to play {:?}: {err:?}", entry.path);
+        match self.audio.play(id.clone(), &path, volume) {
+            Ok(duration) => {
+                self.playing_id = Some(id.clone());
+                self.playing_duration = duration;
+                self.playback_elapsed = Duration::ZERO;
+                self.playback_started_at = Some(Instant::now());
+                self.is_paused = false;
+                cx.notify();
+                self.watch_playback(id, cx);
+            }
+            Err(err) => {
+                eprintln!("soundboard: failed to play {:?}: {err:?}", path);
+            }
         }
+    }
+
+    pub fn play_sound(&mut self, id: String, cx: &mut Context<Self>) {
+        let Some(entry) = self.library.get(id.clone()).cloned() else {
+            return;
+        };
+        let volume = self.master_volume_fraction(cx) * entry.volume;
+        self.begin_playback(id, entry.path, volume, cx);
+    }
+
+    /// Used by `play_online_sound` once a preview file is cached on disk.
+    pub fn play_cached_path(&mut self, id: String, path: PathBuf, cx: &mut Context<Self>) {
+        let volume = self.master_volume_fraction(cx);
+        self.begin_playback(id, path, volume, cx);
+    }
+
+    fn toggle_active(&mut self, id: &str, cx: &mut Context<Self>) -> bool {
+        if self.playing_id.as_deref() != Some(id) || self.audio.has_finished(id) {
+            return false;
+        }
+        if self.is_paused {
+            self.audio.resume(id);
+            self.playback_started_at = Some(Instant::now());
+            self.is_paused = false;
+            cx.notify();
+            self.watch_playback(id.to_string(), cx);
+        } else {
+            self.audio.pause(id);
+            if let Some(started) = self.playback_started_at.take() {
+                self.playback_elapsed += started.elapsed();
+            }
+            self.is_paused = true;
+            cx.notify();
+        }
+        true
+    }
+
+    pub fn toggle_play_pause(&mut self, id: String, cx: &mut Context<Self>) {
+        if !self.toggle_active(&id, cx) {
+            self.play_sound(id, cx);
+        }
+    }
+
+    pub fn toggle_preview_play_pause(&mut self, sound: InstantSound, cx: &mut Context<Self>) {
+        let preview_id = format!("preview-{}", sound.mp3);
+        if !self.toggle_active(&preview_id, cx) {
+            self.play_online_sound(sound, cx);
+        }
+    }
+
+    /// Polls playback state every 100ms and calls cx.notify() so the
+    /// progress bar advances, stopping itself once the sound finishes,
+    /// is paused, or is superseded by a different sound.
+    /// this looks like a heafty load ;;)
+    fn watch_playback(&mut self, id: String, cx: &mut Context<Self>) {
+        cx.spawn(async move |this, cx| loop {
+            cx.background_executor()
+                .timer(Duration::from_millis(100))
+                .await;
+
+            let should_stop = this
+                .update(cx, |this, cx| {
+                    if this.playing_id.as_deref() != Some(id.as_str()) || this.is_paused {
+                        return true;
+                    }
+                    if this.audio.has_finished(&id) {
+                        this.playing_id = None;
+                        this.playback_started_at = None;
+                        this.playback_elapsed = Duration::ZERO;
+                        this.playing_duration = None;
+                        cx.notify();
+                        return true;
+                    }
+                    cx.notify();
+                    false
+                })
+                .unwrap_or(true);
+
+            if should_stop {
+                break;
+            }
+        })
+        .detach();
+    }
+
+    /// Fraction (0.0–1.0) through playback for `id`, or `None` if it isn't
+    /// the active sound or has no known duration.
+    pub fn playback_fraction_for(&self, id: &str) -> Option<f32> {
+        if self.playing_id.as_deref() != Some(id) {
+            return None;
+        }
+        let duration = self.playing_duration?;
+        if duration.as_secs_f32() <= 0.0 {
+            return None;
+        }
+        let elapsed = self.playback_elapsed
+            + self
+                .playback_started_at
+                .map(|s| s.elapsed())
+                .unwrap_or_default();
+        Some((elapsed.as_secs_f32() / duration.as_secs_f32()).min(1.0))
     }
 
     pub fn select_sound(&mut self, id: String, cx: &mut Context<Self>) {

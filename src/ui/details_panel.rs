@@ -2,6 +2,7 @@ use gpui_kit::{
     base::{h_flex, v_flex, Disableable, StyledExt},
     component::{
         button::{Button, ButtonVariants},
+        progress::Progress,
         ActiveTheme, Sizable,
     },
     div, img, px, Context, InteractiveElement, IntoElement, ObjectFit, ParentElement, Styled,
@@ -36,6 +37,20 @@ impl SoundboardApp {
                 .keybind
                 .clone()
                 .unwrap_or_else(|| "No keybind set".to_string());
+
+            let is_active_and_playing =
+                self.playing_id.as_deref() == Some(id.as_str()) && !self.is_paused;
+            let play_icon = if is_active_and_playing {
+                IconName::Pause
+            } else {
+                IconName::Play
+            };
+            let progress_fraction = self.playback_fraction_for(&id).unwrap_or(0.0);
+
+            let progress_bar = Progress::new("audio-progress")
+                .value((progress_fraction * 100.0).min(100.0))
+                .h_4()
+                .flex_1();
 
             return base_panel
                 .child(
@@ -97,19 +112,22 @@ impl SoundboardApp {
                         ),
                 )
                 .child(
-                    h_flex().gap_1().flex().child(
-                        Button::new("play-btn")
-                            .primary()
-                            .small()
-                            .w_full()
-                            .icon(IconName::Play)
-                            .on_click(cx.listener({
-                                let id = id.clone();
-                                move |this, _, _, cx| {
-                                    this.play_sound(id.clone(), cx);
-                                }
-                            })),
-                    ),
+                    h_flex()
+                        .gap_2()
+                        .items_center()
+                        .child(
+                            Button::new("play-btn")
+                                .primary()
+                                .small()
+                                .icon(play_icon)
+                                .on_click(cx.listener({
+                                    let id = id.clone();
+                                    move |this, _, _, cx| {
+                                        this.toggle_play_pause(id.clone(), cx);
+                                    }
+                                })),
+                        )
+                        .child(progress_bar),
                 )
                 .child(
                     v_flex()
@@ -210,6 +228,43 @@ impl SoundboardApp {
             if let Some(online_sound) = self.search_results.get(index).cloned() {
                 let download_sound = online_sound.clone();
                 let play_sound = online_sound.clone();
+                let preview_id = format!("preview-{}", online_sound.mp3);
+
+                let is_active_and_playing =
+                    self.playing_id.as_deref() == Some(preview_id.as_str()) && !self.is_paused;
+
+                // this is here again oh nooo
+                let preview_icon = if is_active_and_playing {
+                    IconName::Pause
+                } else {
+                    IconName::Play
+                };
+                let preview_label = if is_active_and_playing {
+                    "Pause"
+                } else {
+                    "Play"
+                };
+
+                let download_bar = self.download_progress.map(|progress| {
+                    v_flex()
+                        .gap_1()
+                        .w_full()
+                        .child(
+                            Progress::new("download-progress")
+                                .value((progress * 100.0).min(100.0))
+                                .h_2()
+                                .w_full(),
+                        )
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(format!(
+                                    "Downloading… {}%",
+                                    (progress * 100.0).round() as i32
+                                )),
+                        )
+                });
 
                 return base_panel
                     .child(
@@ -261,10 +316,13 @@ impl SoundboardApp {
                                         Button::new("preview-play-btn")
                                             .primary()
                                             .flex_1()
-                                            .icon(IconName::Play)
-                                            .label("Play")
+                                            .icon(preview_icon)
+                                            .label(preview_label)
                                             .on_click(cx.listener(move |this, _, _, cx| {
-                                                this.play_online_sound(play_sound.clone(), cx);
+                                                this.toggle_preview_play_pause(
+                                                    play_sound.clone(),
+                                                    cx,
+                                                );
                                             })),
                                     )
                                     .child(
@@ -273,22 +331,20 @@ impl SoundboardApp {
                                             .flex_1()
                                             .disabled(self.is_busy)
                                             .icon(IconName::Plus)
-                                            .label("Add to Library")
+                                            .label(if self.is_busy {
+                                                "Downloading…"
+                                            } else {
+                                                "Add to Library"
+                                            })
                                             .on_click(cx.listener(move |this, _, _, cx| {
-                                                if this.is_busy {
-                                                    return;
-                                                }
-                                                this.is_busy = true;
-                                                cx.notify();
                                                 this.download_and_add_sound(
                                                     download_sound.clone(),
                                                     cx,
                                                 );
-                                                this.is_busy = false;
-                                                cx.notify();
                                             })),
                                     ),
-                            ),
+                            )
+                            .children(download_bar),
                     )
                     .into_any_element();
             }
