@@ -1,0 +1,26 @@
+## [0.1.1] - 2026-09-26
+
+### ⚙️ Miscellaneous Tasks
+
+- Fix build
+- Add manual trigger
+## [0.1.0] - 2026-09-26
+
+### 💼 Other
+
+- Version 0.1.0
+## [0.1] - 2026-09-26
+
+### 🚀 Features
+
+- Added sidebar
+- Switched from iced to gpui
+
+### 🚜 Refactor
+
+- Seperate files for ui components
+
+### 💼 Other
+
+- Initial commit
+- V1.0
