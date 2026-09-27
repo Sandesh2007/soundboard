@@ -1,3 +1,32 @@
+## [1.2.1] - 2026-09-27
+## [1.2] - 2026-09-27
+
+### 🚀 Features
+
+- Added online sounds from myinstants
+- Details panel for online sounds
+
+### 📚 Documentation
+
+- Added changelog with git-cliff
+
+### ⚙️ Miscellaneous Tasks
+
+- Release version v1.2
+## [1.2] - 2026-09-27
+
+### 🚀 Features
+
+- Added online sounds from myinstants
+- Details panel for online sounds
+
+### 📚 Documentation
+
+- Added changelog with git-cliff
+
+### ⚙️ Miscellaneous Tasks
+
+- Release version v1.2
 ## [1.2] - 2026-09-27
 
 ### 🚀 Features
