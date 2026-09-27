@@ -39,10 +39,6 @@ ttf-parser = { opt-level = 3 }
 inherits = "release"
 lto = "thin"
 
-[workspace.metadata.dist]
-changelog-path = "CHANGELOG.md"
-
-
 [package.metadata.deb]
 maintainer = "sandesh2007 <sandeshsharma924@gmail.com>"
 copyright = "2026, Sandesh"
