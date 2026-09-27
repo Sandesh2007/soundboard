@@ -51,6 +51,15 @@ impl SoundboardApp {
                             })),
                     )
                     .child(
+                        SidebarMenuItem::new("Add sounds")
+                            .icon(IconName::Music)
+                            .active(self.page == Page::AddSounds)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.page = Page::AddSounds;
+                                cx.notify();
+                            })),
+                    )
+                    .child(
                         SidebarMenuItem::new("Settings")
                             .icon(IconName::Settings)
                             .active(self.page == Page::Settings)

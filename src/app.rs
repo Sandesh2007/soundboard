@@ -1,3 +1,4 @@
+use gpui_kit::base::input::{InputEvent, InputState};
 use gpui_kit::{
     base::slider::SliderState,
     component::{h_flex, ActiveTheme, Root, ThemeRegistry},
@@ -8,13 +9,14 @@ use gpui_kit::{
     KeyDownEvent, ParentElement as _, PathPromptOptions, Render, Styled as _, Window,
 };
 
-use crate::audio::AudioEngine;
 use crate::sound::SoundLibrary;
+use crate::{audio::AudioEngine, core::get_sounds::InstantSound};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Page {
     Home,
     Settings,
+    AddSounds,
 }
 
 pub struct SoundboardApp {
@@ -32,6 +34,12 @@ pub struct SoundboardApp {
     pub details_page_expanded: bool,
 
     pub focus_handle: FocusHandle,
+
+    // search sounds
+    pub search_query: String,
+    pub search_input: Entity<InputState>,
+    pub search_results: Vec<InstantSound>,
+    pub is_searching: bool,
 }
 
 impl SoundboardApp {
@@ -57,6 +65,25 @@ impl SoundboardApp {
         let focus_handle = cx.focus_handle();
         window.focus(&focus_handle, cx);
 
+        let search_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Search Myinstants..."));
+
+        cx.subscribe_in(
+            &search_input,
+            window,
+            |this, state, event, _window, cx| match event {
+                InputEvent::Change => {
+                    this.search_query = state.read(cx).value().to_string();
+                    cx.notify();
+                }
+                InputEvent::PressEnter { .. } => {
+                    this.search_online_sounds(cx);
+                }
+                _ => {}
+            },
+        )
+        .detach();
+
         Self {
             page: Page::Home,
             sidebar_collapsed: false,
@@ -69,6 +96,10 @@ impl SoundboardApp {
             details_page_expanded: false,
             recording_keybind: false,
             focus_handle,
+            search_query: String::new(),
+            search_input,
+            search_results: Vec::new(),
+            is_searching: false,
         }
     }
 
@@ -197,6 +228,7 @@ impl Render for SoundboardApp {
         let content = match self.page {
             Page::Home => self.render_home(cx).into_any_element(),
             Page::Settings => self.render_settings(cx).into_any_element(),
+            Page::AddSounds => self.render_online_search(cx).into_any_element(),
         };
         let detail_panel = self
             .selected_sound
