@@ -1,3 +1,4 @@
+use gpui_kit::accesskit::Uuid;
 use gpui_kit::base::input::{InputEvent, InputState};
 use gpui_kit::{
     base::slider::SliderState,
@@ -28,7 +29,7 @@ pub struct SoundboardApp {
     pub stop_others: bool,
 
     // Right-side per-sound detail panel.
-    pub selected_sound: Option<u64>,
+    pub selected_sound: Option<String>,
     pub detail_volume: Option<Entity<gpui_kit::component::slider::SliderState>>,
     pub recording_keybind: bool,
     pub details_page_expanded: bool,
@@ -128,7 +129,12 @@ impl SoundboardApp {
                             .file_stem()
                             .map(|stem| stem.to_string_lossy().into_owned())
                             .unwrap_or_else(|| "Sound".to_string());
-                        this.library.add(name, path);
+                        let id = format!(
+                            "{}-{}",
+                            name.to_lowercase().replace(' ', "-"),
+                            Uuid::new_v4()
+                        );
+                        this.library.add(id, name, path);
                     }
                     let _ = this.library.save();
                     cx.notify();
@@ -138,7 +144,7 @@ impl SoundboardApp {
         .detach();
     }
 
-    pub fn play_sound(&mut self, id: u64, cx: &mut Context<Self>) {
+    pub fn play_sound(&mut self, id: String, cx: &mut Context<Self>) {
         let Some(entry) = self.library.get(id).cloned() else {
             return;
         };
@@ -151,41 +157,53 @@ impl SoundboardApp {
         }
     }
 
-    pub fn select_sound(&mut self, id: u64, cx: &mut Context<Self>) {
-        let Some(entry) = self.library.get(id) else {
-            return;
-        };
-        let initial_percent = entry.volume * 100.0;
-        let slider = cx.new(|_| {
-            SliderState::new()
-                .min(0.)
-                .max(150.)
-                .default_value(initial_percent)
-        });
-        cx.subscribe(&slider, move |this, state, _event, cx| {
-            let percent = state.read(cx).value().start();
-            if let Some(sound) = this.library.get_mut(id) {
-                sound.volume = percent / 100.0;
-                let _ = this.library.save();
-            }
-            cx.notify();
-        })
-        .detach();
+    pub fn select_sound(&mut self, id: String, cx: &mut Context<Self>) {
+        if let Some(entry) = self.library.get(id.clone()) {
+            let initial_percent = entry.volume * 100.0;
+            let slider = cx.new(|_| {
+                SliderState::new()
+                    .min(0.)
+                    .max(150.)
+                    .default_value(initial_percent)
+            });
+            let s_clone = id.clone();
+            cx.subscribe(&slider, move |this, state, _event, cx| {
+                let percent = state.read(cx).value().start();
+                if let Some(sound) = this.library.get_mut(s_clone.clone()) {
+                    sound.volume = percent / 100.0;
+                    let _ = this.library.save();
+                }
+                cx.notify();
+            })
+            .detach();
 
-        self.selected_sound = Some(id);
-        self.details_page_expanded = true;
-        self.detail_volume = Some(slider);
-        self.recording_keybind = false;
-        cx.notify();
+            self.selected_sound = Some(id);
+            self.details_page_expanded = true;
+            self.detail_volume = Some(slider);
+            self.recording_keybind = false;
+            cx.notify();
+            return;
+        }
+
+        if let Ok(index) = id.parse::<usize>() {
+            if self.search_results.get(index).is_some() {
+                self.selected_sound = Some(id);
+                self.details_page_expanded = true;
+                self.detail_volume = None;
+                self.recording_keybind = false;
+                cx.notify();
+            }
+        }
     }
 
-    pub fn choose_image(&mut self, id: u64, cx: &mut Context<Self>) {
+    pub fn choose_image(&mut self, id: &String, cx: &mut Context<Self>) {
         let receiver = cx.prompt_for_paths(PathPromptOptions {
             files: true,
             directories: false,
             multiple: false,
             prompt: Some("Select an image".into()),
         });
+        let id = id.clone();
         cx.spawn(async move |this, cx| {
             if let Ok(Ok(Some(mut paths))) = receiver.await {
                 if let Some(path) = paths.pop() {
@@ -206,7 +224,7 @@ impl SoundboardApp {
         let combo = event.keystroke.to_string();
 
         if self.recording_keybind {
-            if let Some(id) = self.selected_sound {
+            if let Some(id) = self.selected_sound.clone() {
                 if let Some(sound) = self.library.get_mut(id) {
                     sound.keybind = Some(combo);
                     let _ = self.library.save();
@@ -232,6 +250,7 @@ impl Render for SoundboardApp {
         };
         let detail_panel = self
             .selected_sound
+            .clone()
             .map(|id| self.render_detail_panel(id, cx));
 
         h_flex()

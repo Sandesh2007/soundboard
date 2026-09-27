@@ -16,7 +16,7 @@ impl SoundboardApp {
         sound: &SoundEntry,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let select_id = sound.id;
+        let select_id = sound.id.clone();
 
         let keybind_element = match &sound.keybind {
             Some(kb) => match Keystroke::parse(kb) {
@@ -44,7 +44,7 @@ impl SoundboardApp {
         };
 
         v_flex()
-            .id(("sound-card", sound.id))
+            .id(sound.id.clone())
             .w(px(170.))
             .p_2()
             .gap_2()
@@ -55,8 +55,8 @@ impl SoundboardApp {
             .cursor_pointer()
             .relative()
             .on_click(cx.listener(move |this, _, _, cx| {
-                this.select_sound(select_id, cx);
-                this.play_sound(select_id, cx);
+                this.select_sound(select_id.clone(), cx);
+                this.play_sound(select_id.clone(), cx);
             }))
             .child(match &sound.image_path {
                 Some(path) => div()
@@ -133,7 +133,7 @@ impl SoundboardApp {
                                             .secondary()
                                             .icon(IconName::PanelLeft)
                                             .on_click(cx.listener(|this, _, _, cx| {
-                                                this.select_sound(0, cx);
+                                                this.select_sound(String::new(), cx);
                                             })),
                                     )
                                     .visible()

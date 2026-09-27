@@ -2,9 +2,13 @@ use gpui_kit::base::Disableable;
 use gpui_kit::component::button::ButtonVariants;
 use gpui_kit::component::input::Input;
 use gpui_kit::component::scroll::ScrollableElement;
+use gpui_kit::component::shimmer::ShimmerText;
 use gpui_kit::component::Sizable;
 use gpui_kit::component::{button::Button, h_flex, v_flex, ActiveTheme, Icon};
-use gpui_kit::{div, px, Context, InteractiveElement, IntoElement, ParentElement, Styled as _};
+use gpui_kit::{
+    div, px, Context, InteractiveElement, IntoElement, ParentElement, SharedString,
+    StatefulInteractiveElement, Styled as _,
+};
 use gpui_kit_assets::IconName;
 
 use crate::core::get_sounds::InstantSound;
@@ -13,14 +17,16 @@ use crate::SoundboardApp;
 impl SoundboardApp {
     pub fn render_online_result_card(
         &self,
+        index: String,
         sound: &InstantSound,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let play_sound = sound.clone();
         let download_sound = sound.clone();
+        let id = index.clone();
 
         v_flex()
-            .id("online-sound-card")
+            .id(SharedString::from(format!("online-sound-card-{index}")))
             .w(px(160.))
             .p_3()
             .gap_2()
@@ -30,6 +36,10 @@ impl SoundboardApp {
             .border_color(cx.theme().border)
             .bg(cx.theme().background)
             .shadow_sm()
+            .on_click(cx.listener(move |this, _, _, cx| {
+                println!("clicked id: {}", id);
+                this.select_sound(id.clone(), cx);
+            }))
             .hover(|style| {
                 style
                     .bg(cx.theme().secondary)
@@ -51,13 +61,13 @@ impl SoundboardApp {
                     ),
             )
             .child(
-                div()
+                ShimmerText::new(sound.title.clone())
                     .text_xs()
                     .text_center()
                     .w_full()
                     .line_clamp(2)
-                    .overflow_hidden()
-                    .child(sound.title.clone()),
+                    .highlight_color(cx.theme().primary)
+                    .overflow_hidden(),
             )
             .child(
                 div()
@@ -147,11 +157,9 @@ impl SoundboardApp {
                     .overflow_y_scrollbar()
                     .flex_wrap()
                     .gap_3()
-                    .children(
-                        results
-                            .iter()
-                            .map(|sound| self.render_online_result_card(sound, cx)),
-                    )
+                    .children(results.iter().enumerate().map(|(id, sound)| {
+                        self.render_online_result_card(id.to_string(), sound, cx)
+                    }))
                     .into_any_element()
             } else {
                 v_flex()

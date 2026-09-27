@@ -6,7 +6,7 @@ use std::path::PathBuf;
 /// A single local sound file added to the board.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SoundEntry {
-    pub id: u64,
+    pub id: String,
     pub name: String,
     pub path: PathBuf,
 
@@ -27,7 +27,6 @@ fn default_volume() -> f32 {
 #[derive(Default, Serialize, Deserialize)]
 pub struct SoundLibrary {
     pub sounds: Vec<SoundEntry>,
-    next_id: u64,
 }
 
 impl SoundLibrary {
@@ -54,11 +53,10 @@ impl SoundLibrary {
         Ok(())
     }
 
-    pub fn add(&mut self, name: String, path: PathBuf) -> u64 {
-        let id = self.next_id;
-        self.next_id += 1;
+    pub fn add(&mut self, id: String, name: String, path: PathBuf) -> String {
+        let id_clone = id.clone();
         self.sounds.push(SoundEntry {
-            id,
+            id: id_clone,
             name,
             path,
             volume: default_volume(),
@@ -68,22 +66,22 @@ impl SoundLibrary {
         id
     }
 
-    pub fn remove(&mut self, id: u64) {
+    pub fn remove(&mut self, id: String) {
         self.sounds.retain(|s| s.id != id);
     }
 
-    pub fn get(&self, id: u64) -> Option<&SoundEntry> {
+    pub fn get(&self, id: String) -> Option<&SoundEntry> {
         self.sounds.iter().find(|s| s.id == id)
     }
 
-    pub fn get_mut(&mut self, id: u64) -> Option<&mut SoundEntry> {
+    pub fn get_mut(&mut self, id: String) -> Option<&mut SoundEntry> {
         self.sounds.iter_mut().find(|s| s.id == id)
     }
 
-    pub fn find_by_keybind(&self, combo: &str) -> Option<u64> {
+    pub fn find_by_keybind(&self, combo: &str) -> Option<String> {
         self.sounds
             .iter()
             .find(|s| s.keybind.as_deref() == Some(combo))
-            .map(|s| s.id)
+            .map(|s| s.id.clone())
     }
 }

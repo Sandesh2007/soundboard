@@ -7,7 +7,7 @@ use crate::app::SoundboardApp;
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct InstantSound {
-    pub _id: Option<String>,
+    pub id: String,
     pub title: String,
     pub mp3: String,
 }
@@ -120,7 +120,7 @@ impl SoundboardApp {
 
                 if std::fs::write(&file_path, bytes).is_ok() {
                     let _ = this.update(cx, |this, cx| {
-                        this.library.add(sound.title, file_path);
+                        this.library.add(sound.id, sound.title, file_path);
                         let _ = this.library.save();
                         cx.notify();
                     });

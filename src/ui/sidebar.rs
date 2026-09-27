@@ -47,6 +47,8 @@ impl SoundboardApp {
                             .active(self.page == Page::Home)
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.page = Page::Home;
+                                this.audio.stop_all();
+                                this.close_detail(cx);
                                 cx.notify();
                             })),
                     )
@@ -56,6 +58,8 @@ impl SoundboardApp {
                             .active(self.page == Page::AddSounds)
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.page = Page::AddSounds;
+                                this.audio.stop_all();
+                                this.close_detail(cx);
                                 cx.notify();
                             })),
                     )
@@ -65,6 +69,8 @@ impl SoundboardApp {
                             .active(self.page == Page::Settings)
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.page = Page::Settings;
+                                this.audio.stop_all();
+                                this.close_detail(cx);
                                 cx.notify();
                             })),
                     ),
