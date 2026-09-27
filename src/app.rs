@@ -1,13 +1,15 @@
 use gpui_kit::accesskit::Uuid;
 use gpui_kit::base::input::{InputEvent, InputState};
+use gpui_kit::component::notification::{Notification, NotificationType};
+use gpui_kit::component::WindowExt;
 use gpui_kit::{
     base::slider::SliderState,
     component::{h_flex, ActiveTheme, Root, ThemeRegistry},
     SharedString,
 };
 use gpui_kit::{
-    div, App, AppContext as _, Context, Entity, FocusHandle, InteractiveElement as _, IntoElement,
-    KeyDownEvent, ParentElement as _, PathPromptOptions, Render, Styled as _, Window,
+    div, Anchor, App, AppContext as _, Context, Entity, FocusHandle, InteractiveElement as _,
+    IntoElement, KeyDownEvent, ParentElement as _, PathPromptOptions, Render, Styled as _, Window,
 };
 
 use crate::sound::SoundLibrary;
@@ -33,6 +35,8 @@ pub struct SoundboardApp {
     pub detail_volume: Option<Entity<gpui_kit::component::slider::SliderState>>,
     pub recording_keybind: bool,
     pub details_page_expanded: bool,
+    pub is_busy: bool,
+    pub keybind_conflict_warning: String,
 
     pub focus_handle: FocusHandle,
 
@@ -95,12 +99,74 @@ impl SoundboardApp {
             selected_sound: None,
             detail_volume: None,
             details_page_expanded: false,
+            is_busy: false,
+            keybind_conflict_warning: String::new(),
             recording_keybind: false,
             focus_handle,
             search_query: String::new(),
             search_input,
             search_results: Vec::new(),
             is_searching: false,
+        }
+    }
+
+    pub fn assign_keybind_to_sound(
+        &mut self,
+        target_id: &str,
+        new_keybind: String,
+        cx: &mut Context<Self>,
+    ) {
+        let conflict =
+            self.library.sounds.iter().any(|sound| {
+                sound.id != target_id && sound.keybind.as_deref() == Some(&new_keybind)
+            });
+
+        if conflict {
+            self.keybind_conflict_warning = format!(
+                "Keybind '{}' is already assigned to another sound!",
+                new_keybind
+            );
+            self.show_toast(
+                self.keybind_conflict_warning.clone(),
+                NotificationType::Error,
+                Anchor::BottomRight,
+                cx,
+            );
+            cx.notify();
+            return;
+        }
+
+        self.keybind_conflict_warning = String::new();
+        if let Some(sound) = self.library.get_mut(target_id.to_string()) {
+            sound.keybind = Some(new_keybind);
+            let _ = self.library.save();
+        }
+
+        self.recording_keybind = false;
+        cx.notify();
+    }
+
+    pub fn show_toast(
+        &self,
+        message: impl Into<SharedString>,
+        notif_type: NotificationType,
+        placement: Anchor,
+        cx: &mut Context<Self>,
+    ) {
+        let msg = message.into();
+
+        // grab the first window then show notification there
+        if let Some(window_handle) = cx.windows().first() {
+            let _ = window_handle.update(cx, |_, window, cx| {
+                window.push_notification(
+                    Notification::new()
+                        .message(msg)
+                        .with_type(notif_type)
+                        .placement(placement)
+                        .autohide(true),
+                    cx,
+                );
+            });
         }
     }
 
@@ -225,13 +291,16 @@ impl SoundboardApp {
 
         if self.recording_keybind {
             if let Some(id) = self.selected_sound.clone() {
-                if let Some(sound) = self.library.get_mut(id) {
-                    sound.keybind = Some(combo);
-                    let _ = self.library.save();
+                if event.keystroke.key == "escape" {
+                    self.recording_keybind = false;
+                    cx.notify();
+                    return;
                 }
+                self.assign_keybind_to_sound(&id, combo, cx);
+            } else {
+                self.recording_keybind = false;
+                cx.notify();
             }
-            self.recording_keybind = false;
-            cx.notify();
             return;
         }
 

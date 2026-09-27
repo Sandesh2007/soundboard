@@ -184,12 +184,21 @@ impl SoundboardApp {
                                 .danger()
                                 .w_full()
                                 .large()
+                                .disabled(self.is_busy)
                                 .label("Delete sound")
                                 .tooltip("remove sound")
                                 .icon(IconName::Trash)
                                 .on_click(cx.listener(move |this, _, _, cx| {
+                                    if this.is_busy {
+                                        return;
+                                    }
+                                    this.is_busy = true;
+                                    cx.notify();
                                     this.audio.stop_all();
                                     this.remove_sound(id.clone(), cx);
+
+                                    this.is_busy = false;
+                                    cx.notify();
                                 })),
                         ),
                 )
@@ -262,13 +271,21 @@ impl SoundboardApp {
                                         Button::new("preview-download-btn")
                                             .outline()
                                             .flex_1()
+                                            .disabled(self.is_busy)
                                             .icon(IconName::Plus)
                                             .label("Add to Library")
                                             .on_click(cx.listener(move |this, _, _, cx| {
+                                                if this.is_busy {
+                                                    return;
+                                                }
+                                                this.is_busy = true;
+                                                cx.notify();
                                                 this.download_and_add_sound(
                                                     download_sound.clone(),
                                                     cx,
                                                 );
+                                                this.is_busy = false;
+                                                cx.notify();
                                             })),
                                     ),
                             ),

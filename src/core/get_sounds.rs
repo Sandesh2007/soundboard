@@ -1,4 +1,4 @@
-use gpui_kit::Context;
+use gpui_kit::{component::notification::NotificationType, Context};
 use serde::Deserialize;
 use std::sync::LazyLock;
 use tokio::runtime::Runtime;
@@ -122,6 +122,23 @@ impl SoundboardApp {
                     let _ = this.update(cx, |this, cx| {
                         this.library.add(sound.id, sound.title, file_path);
                         let _ = this.library.save();
+
+                        this.show_toast(
+                            format!("Added {safe_title} to your library"),
+                            NotificationType::Success,
+                            gpui_kit::Anchor::BottomRight,
+                            cx,
+                        );
+                        cx.notify();
+                    });
+                } else {
+                    let _ = this.update(cx, |this, cx| {
+                        this.show_toast(
+                            format!("Failed to add {safe_title} to your library"),
+                            NotificationType::Error,
+                            gpui_kit::Anchor::BottomRight,
+                            cx,
+                        );
                         cx.notify();
                     });
                 }

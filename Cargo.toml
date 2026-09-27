@@ -1,7 +1,7 @@
 [package]
 name = "soundboard"
 description = "A awesome soundboard app for streamers"
-version = "0.1.0"
+version = "0.1.2"
 license = "GPL-3.0"
 edition = "2021"
 readme = "README.md"

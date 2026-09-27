@@ -3,6 +3,7 @@ use gpui_kit::component::button::ButtonVariants;
 use gpui_kit::component::input::Input;
 use gpui_kit::component::scroll::ScrollableElement;
 use gpui_kit::component::shimmer::ShimmerText;
+use gpui_kit::component::skeleton::Skeleton;
 use gpui_kit::component::Sizable;
 use gpui_kit::component::{button::Button, h_flex, v_flex, ActiveTheme, Icon};
 use gpui_kit::{
@@ -28,6 +29,7 @@ impl SoundboardApp {
         v_flex()
             .id(SharedString::from(format!("online-sound-card-{index}")))
             .w(px(160.))
+            .h(px(220.))
             .p_3()
             .gap_2()
             .items_center()
@@ -37,7 +39,6 @@ impl SoundboardApp {
             .bg(cx.theme().background)
             .shadow_sm()
             .on_click(cx.listener(move |this, _, _, cx| {
-                println!("clicked id: {}", id);
                 this.select_sound(id.clone(), cx);
             }))
             .hover(|style| {
@@ -79,7 +80,7 @@ impl SoundboardApp {
                             .small()
                             .icon(IconName::Play)
                             .on_click(cx.listener(move |this, _, _, cx| {
-                                this.play_online_sound(play_sound.clone(), cx);
+                                this.play_online_sound(play_sound.clone(), cx)
                             })),
                     )
                     .child(
@@ -124,13 +125,15 @@ impl SoundboardApp {
                     .child(
                         div().flex_1().child(
                             Input::new(&self.search_input)
-                                .prefix(Icon::new(IconName::Search).small())
+                                .prefix(Icon::new(IconName::Search).large())
+                                .large()
                                 .cleanable(true),
                         ),
                     )
                     .child(
                         Button::new("trigger-search")
                             .primary()
+                            .large()
                             .label(if self.is_searching {
                                 "Searching..."
                             } else {
@@ -144,22 +147,70 @@ impl SoundboardApp {
             )
             .child(if self.is_searching {
                 div()
-                    .flex_1()
                     .flex()
-                    .items_center()
-                    .justify_center()
-                    .text_color(cx.theme().muted_foreground)
-                    .child("Searching online sounds...")
+                    .overflow_y_scrollbar()
+                    .flex_wrap()
+                    .items_start()
+                    .content_start()
+                    .gap_3()
+                    .children((0..10).map(|_| {
+                        v_flex()
+                            .w(px(160.))
+                            .h(px(190.))
+                            .p_3()
+                            .gap_2()
+                            .items_center()
+                            .rounded(cx.theme().radius_lg)
+                            .border_1()
+                            .border_color(cx.theme().border)
+                            .bg(cx.theme().background)
+                            .shadow_sm()
+                            .child(
+                                Skeleton::new()
+                                    .w(px(130.))
+                                    .h(px(130.))
+                                    .rounded(cx.theme().radius),
+                            )
+                            .child(Skeleton::new().w(px(110.)).h(px(12.)).rounded_full())
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .child(
+                                        Skeleton::new()
+                                            .w(px(32.))
+                                            .h(px(24.))
+                                            .rounded(cx.theme().radius),
+                                    )
+                                    .child(
+                                        Skeleton::new()
+                                            .w(px(32.))
+                                            .h(px(24.))
+                                            .rounded(cx.theme().radius),
+                                    ),
+                            )
+                    }))
                     .into_any_element()
             } else if has_results {
                 div()
                     .flex()
                     .overflow_y_scrollbar()
                     .flex_wrap()
+                    .items_start()
+                    .content_start()
                     .gap_3()
                     .children(results.iter().enumerate().map(|(id, sound)| {
                         self.render_online_result_card(id.to_string(), sound, cx)
                     }))
+                    .into_any_element()
+            } else if query_empty && results.is_empty() {
+                v_flex()
+                    .flex_1()
+                    .items_center()
+                    .justify_center()
+                    .gap_2()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(div().child(IconName::Music))
+                    .child("Search for `Fahhhhhhh`")
                     .into_any_element()
             } else {
                 v_flex()
@@ -169,7 +220,10 @@ impl SoundboardApp {
                     .gap_2()
                     .text_color(cx.theme().muted_foreground)
                     .child(div().child(IconName::Music))
-                    .child("No online results found — try searching `Fahhh` .")
+                    .child(format!(
+                        "No online results found for {} .",
+                        self.search_query
+                    ))
                     .into_any_element()
             })
     }
