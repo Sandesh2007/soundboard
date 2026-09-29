@@ -1,3 +1,6 @@
+use crate::core::keybind::GlobalShortcutManager;
+use crate::sound::SoundLibrary;
+use crate::{audio::AudioEngine, core::get_sounds::InstantSound};
 use gpui_kit::accesskit::Uuid;
 use gpui_kit::base::input::{InputEvent, InputState};
 use gpui_kit::component::notification::{Notification, NotificationType};
@@ -13,9 +16,6 @@ use gpui_kit::{
 };
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
-
-use crate::sound::SoundLibrary;
-use crate::{audio::AudioEngine, core::get_sounds::InstantSound};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Page {
@@ -54,6 +54,8 @@ pub struct SoundboardApp {
     pub search_input: Entity<InputState>,
     pub search_results: Vec<InstantSound>,
     pub is_searching: bool,
+
+    pub global_shortcuts: Option<GlobalShortcutManager>,
 }
 
 impl SoundboardApp {
@@ -122,7 +124,16 @@ impl SoundboardApp {
             search_input,
             search_results: Vec::new(),
             is_searching: false,
+            global_shortcuts: None,
         }
+    }
+
+    pub fn start_global_shortcuts(&mut self, cx: &mut Context<Self>) {
+        let app = cx.entity().downgrade();
+
+        let manager = GlobalShortcutManager::start(app, cx);
+
+        self.global_shortcuts = Some(manager);
     }
 
     pub fn assign_keybind_to_sound(
@@ -158,6 +169,11 @@ impl SoundboardApp {
         }
 
         self.recording_keybind = false;
+
+        if let Some(manager) = &self.global_shortcuts {
+            manager.reload();
+        }
+
         cx.notify();
     }
 

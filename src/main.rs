@@ -26,7 +26,6 @@ async fn main() {
         let themes_path = PathBuf::from("./themes");
 
         if let Err(err) = ThemeRegistry::watch_dir(themes_path, cx, |_cx| {
-            // This closure runs automatically whenever theme files are loaded or updated
             println!("Themes directory loaded successfully.");
         }) {
             println!("Warning: Failed to load themes directory: {}", err);
@@ -47,8 +46,13 @@ async fn main() {
                 },
                 |window, cx| {
                     window.set_window_title("Soundboard");
-                    let view = cx.new(|cx| SoundboardApp::new(window, cx));
-                    cx.new(|cx| Root::new(view, window, cx))
+
+                    let app_entity = cx.new(|cx| SoundboardApp::new(window, cx));
+                    app_entity.update(cx, |app, cx| {
+                        app.start_global_shortcuts(cx);
+                    });
+
+                    cx.new(|cx| Root::new(app_entity, window, cx))
                 },
             )
             .expect("failed to open window");

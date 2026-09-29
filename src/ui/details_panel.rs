@@ -368,6 +368,11 @@ impl SoundboardApp {
             sound.keybind = None;
             let _ = self.library.save();
         }
+
+        if let Some(manager) = &self.global_shortcuts {
+            manager.reload();
+        }
+
         cx.notify();
     }
 
