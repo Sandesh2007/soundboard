@@ -1,3 +1,4 @@
+use crate::config::Config;
 use crate::core::keybind::GlobalShortcutManager;
 use crate::sound::SoundLibrary;
 use crate::{audio::AudioEngine, core::get_sounds::InstantSound};
@@ -12,10 +13,14 @@ use gpui_kit::{
 };
 use gpui_kit::{
     div, Anchor, App, AppContext as _, Context, Entity, FocusHandle, InteractiveElement as _,
-    IntoElement, KeyDownEvent, ParentElement as _, PathPromptOptions, Render, Styled as _, Window,
+    IntoElement, ParentElement as _, PathPromptOptions, Render, Styled as _, Window,
 };
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
+
+pub const _BASE_URL: &str = "https://soundboard-api.vercel.app/";
+pub const QUERY_URL: &str = "https://soundboard-api.vercel.app/search?q={}";
+pub const _TRENDING_URL: &str = "https://soundboard-api.vercel.app/trending?q=id";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Page {
@@ -25,6 +30,8 @@ pub enum Page {
 }
 
 pub struct SoundboardApp {
+    pub _config: Config,
+
     pub page: Page,
     pub sidebar_collapsed: bool,
     pub library: SoundLibrary,
@@ -59,7 +66,7 @@ pub struct SoundboardApp {
 }
 
 impl SoundboardApp {
-    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>, config: Config) -> Self {
         let library = SoundLibrary::load();
         let audio = AudioEngine::new().expect("failed to open the default audio output");
         let master_volume = cx.new(|_| {
@@ -101,6 +108,7 @@ impl SoundboardApp {
         .detach();
 
         Self {
+            _config: config,
             page: Page::Home,
             sidebar_collapsed: false,
             library,
@@ -423,29 +431,6 @@ impl SoundboardApp {
         })
         .detach();
     }
-
-    fn on_key_down(&mut self, event: &KeyDownEvent, _window: &mut Window, cx: &mut Context<Self>) {
-        let combo = event.keystroke.to_string();
-
-        if self.recording_keybind {
-            if let Some(id) = self.selected_sound.clone() {
-                if event.keystroke.key == "escape" {
-                    self.recording_keybind = false;
-                    cx.notify();
-                    return;
-                }
-                self.assign_keybind_to_sound(&id, combo, cx);
-            } else {
-                self.recording_keybind = false;
-                cx.notify();
-            }
-            return;
-        }
-
-        if let Some(id) = self.library.find_by_keybind(&combo) {
-            self.play_sound(id, cx);
-        }
-    }
 }
 
 impl Render for SoundboardApp {
@@ -463,7 +448,6 @@ impl Render for SoundboardApp {
         h_flex()
             .id("soundboard-root")
             .track_focus(&self.focus_handle)
-            .on_key_down(cx.listener(Self::on_key_down))
             .items_stretch()
             .size_full()
             .bg(cx.theme().background)

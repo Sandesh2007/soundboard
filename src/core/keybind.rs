@@ -1,19 +1,23 @@
 use evdev::{Device, EventType, InputEventKind, Key as EvKey};
+use futures::channel::oneshot;
 use futures::FutureExt;
 use futures::{channel::mpsc, select, StreamExt};
 use gpui_kit::Context;
 use std::collections::HashSet;
 use std::os::unix::io::AsRawFd;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
 use crate::app::SoundboardApp;
 
+type Recorder = Arc<Mutex<Option<oneshot::Sender<String>>>>;
+
 #[derive(Clone)]
 pub struct GlobalShortcutManager {
     tx: mpsc::UnboundedSender<Command>,
+    recorder: Recorder,
 }
 
 enum Command {
@@ -41,6 +45,9 @@ impl GlobalShortcutManager {
         cx: &mut Context<SoundboardApp>,
     ) -> Self {
         let (tx, mut commands) = mpsc::unbounded();
+
+        let recorder: Recorder = Arc::new(Mutex::new(None));
+        let recorder_for_task = recorder.clone();
 
         cx.spawn(async move |_this, cx| loop {
             let sounds = match app.update(cx, |app, _cx| {
@@ -92,8 +99,9 @@ impl GlobalShortcutManager {
             let (event_tx, mut event_rx) = mpsc::unbounded::<String>();
 
             let thread_stop = stop_flag.clone();
+            let rec = recorder_for_task.clone();
             let worker = thread::spawn(move || {
-                if let Err(err) = run_evdev_loop(shortcuts, thread_stop, event_tx) {
+                if let Err(err) = run_evdev_loop(shortcuts, thread_stop, event_tx, rec) {
                     eprintln!("soundboard: global shortcut listener stopped: {err}");
                 }
             });
@@ -131,11 +139,21 @@ impl GlobalShortcutManager {
         })
         .detach();
 
-        Self { tx }
+        Self { tx, recorder }
     }
 
     pub fn reload(&self) {
         let _ = self.tx.unbounded_send(Command::Reload);
+    }
+
+    pub fn record(&self) -> oneshot::Receiver<String> {
+        let (tx, rx) = oneshot::channel();
+        *self.recorder.lock().unwrap() = Some(tx);
+        rx
+    }
+
+    pub fn _cancel_recording(&self) {
+        self.recorder.lock().unwrap().take();
     }
 }
 
@@ -149,6 +167,7 @@ fn run_evdev_loop(
     shortcuts: Vec<ParsedShortcut>,
     stop: Arc<AtomicBool>,
     tx: mpsc::UnboundedSender<String>,
+    recorder: Recorder,
 ) -> std::io::Result<()> {
     let mut devices = open_keyboard_devices();
 
@@ -186,6 +205,20 @@ fn run_evdev_loop(
                                     if let Some(m) = modifier_for_key(key) {
                                         held_mods.insert(m);
                                     } else {
+                                        // if the UI is waiting for a keybind, capture this
+                                        // key instead of triggering sounds.
+                                        {
+                                            let mut slot = recorder.lock().unwrap();
+                                            if slot.is_some() {
+                                                if let Some(name) = name_for_key(key) {
+                                                    let sender = slot.take().unwrap();
+                                                    let _ =
+                                                        sender.send(format_combo(&held_mods, name));
+                                                }
+                                                continue;
+                                            }
+                                        }
+
                                         for shortcut in &shortcuts {
                                             if shortcut.keys.contains(&key)
                                                 && shortcut.modifiers == held_mods
@@ -289,6 +322,131 @@ fn modifier_from_str(s: &str) -> Option<ModKey> {
         _ => None,
     }
 }
+
+/// Canonical key names used when recording. Each one maps to exactly one
+/// physical key, so number row and numpad keys never share a name.
+const NAMES: &[&str] = &[
+    "a",
+    "b",
+    "c",
+    "d",
+    "e",
+    "f",
+    "g",
+    "h",
+    "i",
+    "j",
+    "k",
+    "l",
+    "m",
+    "n",
+    "o",
+    "p",
+    "q",
+    "r",
+    "s",
+    "t",
+    "u",
+    "v",
+    "w",
+    "x",
+    "y",
+    "z", //
+    "0",
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9", //
+    "kp0",
+    "kp1",
+    "kp2",
+    "kp3",
+    "kp4",
+    "kp5",
+    "kp6",
+    "kp7",
+    "kp8",
+    "kp9", //
+    "kpenter",
+    "kpminus",
+    "kpplus",
+    "kpasterisk",
+    "kpslash",
+    "kpdot",
+    "kpequal", //
+    "f1",
+    "f2",
+    "f3",
+    "f4",
+    "f5",
+    "f6",
+    "f7",
+    "f8",
+    "f9",
+    "f10",
+    "f11",
+    "f12", //
+    "space",
+    "tab",
+    "enter",
+    "escape",
+    "backspace",
+    "delete",
+    "insert",
+    "home",
+    "end",
+    "pageup",
+    "pagedown",
+    "up",
+    "down",
+    "left",
+    "right",
+    "capslock", //
+    "minus",
+    "equal",
+    "comma",
+    "period",
+    "slash",
+    "semicolon",
+    "apostrophe",
+    "leftbracket",
+    "rightbracket",
+    "backslash",
+    "grave",
+];
+
+/// Reverse lookup: physical key -> canonical name (for recording).
+fn name_for_key(key: EvKey) -> Option<&'static str> {
+    NAMES
+        .iter()
+        .copied()
+        .find(|n| key_candidates_from_str(n).map_or(false, |k| k.contains(&key)))
+}
+
+/// Builds a keybind string like "ctrl-shift-kp1" from held modifiers + key name.
+fn format_combo(mods: &HashSet<ModKey>, key: &str) -> String {
+    let mut parts = Vec::new();
+    if mods.contains(&ModKey::Ctrl) {
+        parts.push("ctrl");
+    }
+    if mods.contains(&ModKey::Alt) {
+        parts.push("alt");
+    }
+    if mods.contains(&ModKey::Shift) {
+        parts.push("shift");
+    }
+    if mods.contains(&ModKey::Super) {
+        parts.push("super");
+    }
+    parts.push(key);
+    parts.join("-")
+}
+
 fn key_candidates_from_str(s: &str) -> Option<Vec<EvKey>> {
     Some(match s {
         "a" => vec![EvKey::KEY_A],
@@ -318,16 +476,36 @@ fn key_candidates_from_str(s: &str) -> Option<Vec<EvKey>> {
         "y" => vec![EvKey::KEY_Y],
         "z" => vec![EvKey::KEY_Z],
 
-        "0" => vec![EvKey::KEY_0, EvKey::KEY_KP0],
-        "1" => vec![EvKey::KEY_1, EvKey::KEY_KP1],
-        "2" => vec![EvKey::KEY_2, EvKey::KEY_KP2],
-        "3" => vec![EvKey::KEY_3, EvKey::KEY_KP3],
-        "4" => vec![EvKey::KEY_4, EvKey::KEY_KP4],
-        "5" => vec![EvKey::KEY_5, EvKey::KEY_KP5],
-        "6" => vec![EvKey::KEY_6, EvKey::KEY_KP6],
-        "7" => vec![EvKey::KEY_7, EvKey::KEY_KP7],
-        "8" => vec![EvKey::KEY_8, EvKey::KEY_KP8],
-        "9" => vec![EvKey::KEY_9, EvKey::KEY_KP9],
+        // number row keys (row only)
+        "0" => vec![EvKey::KEY_0],
+        "1" => vec![EvKey::KEY_1],
+        "2" => vec![EvKey::KEY_2],
+        "3" => vec![EvKey::KEY_3],
+        "4" => vec![EvKey::KEY_4],
+        "5" => vec![EvKey::KEY_5],
+        "6" => vec![EvKey::KEY_6],
+        "7" => vec![EvKey::KEY_7],
+        "8" => vec![EvKey::KEY_8],
+        "9" => vec![EvKey::KEY_9],
+
+        // numpad keys (numpad only)
+        "kp0" => vec![EvKey::KEY_KP0],
+        "kp1" => vec![EvKey::KEY_KP1],
+        "kp2" => vec![EvKey::KEY_KP2],
+        "kp3" => vec![EvKey::KEY_KP3],
+        "kp4" => vec![EvKey::KEY_KP4],
+        "kp5" => vec![EvKey::KEY_KP5],
+        "kp6" => vec![EvKey::KEY_KP6],
+        "kp7" => vec![EvKey::KEY_KP7],
+        "kp8" => vec![EvKey::KEY_KP8],
+        "kp9" => vec![EvKey::KEY_KP9],
+        "kpenter" => vec![EvKey::KEY_KPENTER],
+        "kpminus" => vec![EvKey::KEY_KPMINUS],
+        "kpplus" | "plus" | "+" => vec![EvKey::KEY_KPPLUS],
+        "kpasterisk" | "asterisk" | "*" => vec![EvKey::KEY_KPASTERISK],
+        "kpslash" => vec![EvKey::KEY_KPSLASH],
+        "kpdot" => vec![EvKey::KEY_KPDOT],
+        "kpequal" => vec![EvKey::KEY_KPEQUAL],
 
         "f1" => vec![EvKey::KEY_F1],
         "f2" => vec![EvKey::KEY_F2],
@@ -344,7 +522,7 @@ fn key_candidates_from_str(s: &str) -> Option<Vec<EvKey>> {
 
         "space" | "spacebar" => vec![EvKey::KEY_SPACE],
         "tab" => vec![EvKey::KEY_TAB],
-        "enter" | "return" => vec![EvKey::KEY_ENTER, EvKey::KEY_KPENTER],
+        "enter" | "return" => vec![EvKey::KEY_ENTER],
         "escape" | "esc" => vec![EvKey::KEY_ESC],
         "backspace" => vec![EvKey::KEY_BACKSPACE],
         "delete" | "del" => vec![EvKey::KEY_DELETE],
@@ -358,13 +536,11 @@ fn key_candidates_from_str(s: &str) -> Option<Vec<EvKey>> {
         "left" => vec![EvKey::KEY_LEFT],
         "right" => vec![EvKey::KEY_RIGHT],
         "capslock" => vec![EvKey::KEY_CAPSLOCK],
-        "minus" | "-" => vec![EvKey::KEY_MINUS, EvKey::KEY_KPMINUS],
-        "equal" | "=" => vec![EvKey::KEY_EQUAL, EvKey::KEY_KPEQUAL],
+        "minus" | "-" => vec![EvKey::KEY_MINUS],
+        "equal" | "=" => vec![EvKey::KEY_EQUAL],
         "comma" | "," => vec![EvKey::KEY_COMMA],
-        "period" | "." => vec![EvKey::KEY_DOT, EvKey::KEY_KPDOT],
-        "slash" | "/" => vec![EvKey::KEY_SLASH, EvKey::KEY_KPSLASH],
-        "asterisk" | "*" => vec![EvKey::KEY_KPASTERISK],
-        "plus" | "+" => vec![EvKey::KEY_KPPLUS],
+        "period" | "." => vec![EvKey::KEY_DOT],
+        "slash" | "/" => vec![EvKey::KEY_SLASH],
         "semicolon" | ";" => vec![EvKey::KEY_SEMICOLON],
         "apostrophe" | "'" => vec![EvKey::KEY_APOSTROPHE],
         "leftbracket" | "[" => vec![EvKey::KEY_LEFTBRACE],

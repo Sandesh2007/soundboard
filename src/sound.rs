@@ -77,11 +77,4 @@ impl SoundLibrary {
     pub fn get_mut(&mut self, id: String) -> Option<&mut SoundEntry> {
         self.sounds.iter_mut().find(|s| s.id == id)
     }
-
-    pub fn find_by_keybind(&self, combo: &str) -> Option<String> {
-        self.sounds
-            .iter()
-            .find(|s| s.keybind.as_deref() == Some(combo))
-            .map(|s| s.id.clone())
-    }
 }

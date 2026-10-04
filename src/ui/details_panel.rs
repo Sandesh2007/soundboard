@@ -377,7 +377,31 @@ impl SoundboardApp {
     }
 
     pub fn start_recording_keybind(&mut self, cx: &mut Context<Self>) {
+        let Some(manager) = &self.global_shortcuts else {
+            return;
+        };
         self.recording_keybind = true;
+        let rx = manager.record();
+
+        cx.spawn(async move |this, cx| {
+            if let Ok(combo) = rx.await {
+                let _ = this.update(cx, |this, cx| {
+                    if !this.recording_keybind {
+                        return;
+                    }
+                    if combo == "escape" {
+                        this.recording_keybind = false;
+                        cx.notify();
+                        return;
+                    }
+                    if let Some(id) = this.selected_sound.clone() {
+                        this.assign_keybind_to_sound(&id, combo, cx);
+                    }
+                });
+            }
+        })
+        .detach();
+
         cx.notify();
     }
 

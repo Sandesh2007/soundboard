@@ -7,7 +7,7 @@ use serde::Deserialize;
 use std::sync::LazyLock;
 use tokio::runtime::Runtime;
 
-use crate::app::SoundboardApp;
+use crate::app::{SoundboardApp, QUERY_URL};
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct InstantSound {
@@ -118,7 +118,7 @@ impl SoundboardApp {
         cx.notify();
 
         cx.spawn(async move |this, cx| {
-            let url = format!("https://myinstants-api.vercel.app/search?q={}", query);
+            let url = format!("{QUERY_URL}{query}");
 
             let (tx, rx) = oneshot::channel();
             HTTP_RUNTIME.spawn(async move {

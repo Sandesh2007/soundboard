@@ -23,6 +23,7 @@ futures = "0.3.34"
 bytes = "1.12.1"
 evdev = "0.12"
 libc = "0.2"
+toml = "1.1.6"
 
 
 [profile.dev.package]

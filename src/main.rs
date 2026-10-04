@@ -1,6 +1,7 @@
 mod app;
 mod assets;
 mod audio;
+mod config;
 mod core;
 mod pages;
 mod sound;
@@ -18,6 +19,16 @@ pub const APP_NAME: &str = env!("CARGO_BIN_NAME");
 
 #[tokio::main]
 async fn main() {
+    // init config
+
+    let config = match config::Config::load() {
+        Ok(config) => config,
+        Err(err) => {
+            eprintln!("Failed to init config file: {err}");
+            return;
+        }
+    };
+
     let application = gpui_kit::application().with_assets(Assets);
 
     application.run(move |cx| {
@@ -47,7 +58,7 @@ async fn main() {
                 |window, cx| {
                     window.set_window_title("Soundboard");
 
-                    let app_entity = cx.new(|cx| SoundboardApp::new(window, cx));
+                    let app_entity = cx.new(|cx| SoundboardApp::new(window, cx, config));
                     app_entity.update(cx, |app, cx| {
                         app.start_global_shortcuts(cx);
                     });
